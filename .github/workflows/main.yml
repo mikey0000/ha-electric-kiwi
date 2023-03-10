@@ -12,4 +12,6 @@ jobs:
     steps:
         - uses: "actions/checkout@v3"
         - uses: "home-assistant/actions/hassfest@master"
-        - uses: hacs/action@22.5.0
+        - uses: "hacs/action@main"
+          with:
+            category: "integration"
