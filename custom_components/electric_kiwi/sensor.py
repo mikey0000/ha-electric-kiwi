@@ -3,12 +3,10 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 import logging
 
-import async_timeout
 from electrickiwi_api import ElectricKiwiApi
-from electrickiwi_api.exceptions import ApiException, AuthException
 from electrickiwi_api.model import AccountBalance
 
 from homeassistant.components.sensor import (
@@ -20,13 +18,8 @@ from homeassistant.components.sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_ATTRIBUTION, CURRENCY_DOLLAR, PERCENTAGE
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import (
-    CoordinatorEntity,
-    DataUpdateCoordinator,
-    UpdateFailed,
-)
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
     ATTR_HOP_PERCENTAGE,
@@ -37,28 +30,27 @@ from .const import (
     DOMAIN,
     NAME,
 )
+from .coordinator import ElectricKiwiAccountDataCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-ACCOUNT_SCAN_INTERVAL = timedelta(hours=6)
-
 
 @dataclass
-class ElectricKiwiRequiredKeysMixin:
+class ElectricKiwiAccountRequiredKeysMixin:
     """Mixin for required keys."""
 
     value_func: Callable[[AccountBalance], str | datetime | None]
 
 
 @dataclass
-class ElectricKiwiSensorEntityDescription(
-    SensorEntityDescription, ElectricKiwiRequiredKeysMixin
+class ElectricKiwiAccountSensorEntityDescription(
+    SensorEntityDescription, ElectricKiwiAccountRequiredKeysMixin
 ):
     """Describes Electric Kiwi sensor entity."""
 
 
-ACCOUNT_SENSOR_TYPES: tuple[ElectricKiwiSensorEntityDescription, ...] = (
-    ElectricKiwiSensorEntityDescription(
+ACCOUNT_SENSOR_TYPES: tuple[ElectricKiwiAccountSensorEntityDescription, ...] = (
+    ElectricKiwiAccountSensorEntityDescription(
         key=ATTR_TOTAL_RUNNING_BALANCE,
         name=f"{NAME} total running balance",
         icon="mdi:currency-usd",
@@ -67,7 +59,7 @@ ACCOUNT_SENSOR_TYPES: tuple[ElectricKiwiSensorEntityDescription, ...] = (
         native_unit_of_measurement=CURRENCY_DOLLAR,
         value_func=lambda account_balance: account_balance.total_running_balance,
     ),
-    ElectricKiwiSensorEntityDescription(
+    ElectricKiwiAccountSensorEntityDescription(
         key=ATTR_TOTAL_CURRENT_BALANCE,
         name=f"{NAME} total current balance",
         icon="mdi:currency-usd",
@@ -76,7 +68,7 @@ ACCOUNT_SENSOR_TYPES: tuple[ElectricKiwiSensorEntityDescription, ...] = (
         native_unit_of_measurement=CURRENCY_DOLLAR,
         value_func=lambda account_balance: account_balance.total_account_balance,
     ),
-    ElectricKiwiSensorEntityDescription(
+    ElectricKiwiAccountSensorEntityDescription(
         key=ATTR_NEXT_BILLING_DATE,
         name=f"{NAME} next billing date",
         icon="mdi:calendar",
@@ -85,7 +77,7 @@ ACCOUNT_SENSOR_TYPES: tuple[ElectricKiwiSensorEntityDescription, ...] = (
             account_balance.next_billing_date, "%Y-%m-%d"
         ),
     ),
-    ElectricKiwiSensorEntityDescription(
+    ElectricKiwiAccountSensorEntityDescription(
         key=ATTR_HOP_PERCENTAGE,
         name=f"{NAME} Hour of Power savings",
         icon="",
@@ -116,12 +108,12 @@ async def async_setup_entry(
 class ElectricKiwiAccountEntity(CoordinatorEntity, SensorEntity):
     """Entity object for Electric Kiwi sensor."""
 
-    entity_description: ElectricKiwiSensorEntityDescription
+    entity_description: ElectricKiwiAccountSensorEntityDescription
 
     def __init__(
         self,
         account_coordinator: ElectricKiwiAccountDataCoordinator,
-        description: ElectricKiwiSensorEntityDescription,
+        description: ElectricKiwiAccountSensorEntityDescription,
     ) -> None:
         """Entity object for Electric Kiwi sensor."""
         super().__init__(account_coordinator)
@@ -159,45 +151,3 @@ class ElectricKiwiAccountEntity(CoordinatorEntity, SensorEntity):
         """Get the latest data from Electric Kiwi and updates the balances."""
         await super().async_update()
         _LOGGER.debug("Account data from sensor: %s", self._account_coordinator.data)
-
-
-class ElectricKiwiHOPEntity(CoordinatorEntity, SelectEntity):
-    def __init__(self):
-        self._state = None
-        self.options = ['Option 1', 'Option 2', 'Option 3'] # TODO
-        self.selected_option = self.options[0]
-
-    @property
-    def name(self):
-        return 'My Sensor'
-
-    @property
-    def state(self):
-        return self._state
-
-    @property
-    def device_state_attributes(self):
-        return {
-        'options': self.options,
-        'selected_option': self.selected_option
-        }
-
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        """Handle updated data from the coordinator."""
-        self._attr_is_on = self.coordinator.data[self.idx]["state"]
-        self.async_write_ha_state()
-
-
-    async def set_option(self, option):
-        if option in self.options:
-            self.selected_option = option
-            self._state = option
-            await self.coordinator.async_request_refresh()
-
-    async def async_select_option(self, option: str) -> None:
-        """Change the selected option."""
-
-
-    def update(self):
-        pass
