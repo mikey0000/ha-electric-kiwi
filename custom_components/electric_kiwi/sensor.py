@@ -3,12 +3,10 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 import logging
 
-import async_timeout
 from electrickiwi_api import ElectricKiwiApi
-from electrickiwi_api.exceptions import ApiException, AuthException
 from electrickiwi_api.model import AccountBalance
 
 from homeassistant.components.sensor import (
@@ -20,13 +18,8 @@ from homeassistant.components.sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_ATTRIBUTION, CURRENCY_DOLLAR, PERCENTAGE
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import (
-    CoordinatorEntity,
-    DataUpdateCoordinator,
-    UpdateFailed,
-)
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
     ATTR_HOP_PERCENTAGE,
@@ -37,28 +30,27 @@ from .const import (
     DOMAIN,
     NAME,
 )
+from .coordinator import ElectricKiwiAccountDataCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-ACCOUNT_SCAN_INTERVAL = timedelta(hours=6)
-
 
 @dataclass
-class ElectricKiwiRequiredKeysMixin:
+class ElectricKiwiAccountRequiredKeysMixin:
     """Mixin for required keys."""
 
     value_func: Callable[[AccountBalance], str | datetime | None]
 
 
 @dataclass
-class ElectricKiwiSensorEntityDescription(
-    SensorEntityDescription, ElectricKiwiRequiredKeysMixin
+class ElectricKiwiAccountSensorEntityDescription(
+    SensorEntityDescription, ElectricKiwiAccountRequiredKeysMixin
 ):
     """Describes Electric Kiwi sensor entity."""
 
 
-SENSOR_TYPES: tuple[ElectricKiwiSensorEntityDescription, ...] = (
-    ElectricKiwiSensorEntityDescription(
+ACCOUNT_SENSOR_TYPES: tuple[ElectricKiwiAccountSensorEntityDescription, ...] = (
+    ElectricKiwiAccountSensorEntityDescription(
         key=ATTR_TOTAL_RUNNING_BALANCE,
         name=f"{NAME} total running balance",
         icon="mdi:currency-usd",
@@ -67,7 +59,7 @@ SENSOR_TYPES: tuple[ElectricKiwiSensorEntityDescription, ...] = (
         native_unit_of_measurement=CURRENCY_DOLLAR,
         value_func=lambda account_balance: account_balance.total_running_balance,
     ),
-    ElectricKiwiSensorEntityDescription(
+    ElectricKiwiAccountSensorEntityDescription(
         key=ATTR_TOTAL_CURRENT_BALANCE,
         name=f"{NAME} total current balance",
         icon="mdi:currency-usd",
@@ -76,7 +68,7 @@ SENSOR_TYPES: tuple[ElectricKiwiSensorEntityDescription, ...] = (
         native_unit_of_measurement=CURRENCY_DOLLAR,
         value_func=lambda account_balance: account_balance.total_account_balance,
     ),
-    ElectricKiwiSensorEntityDescription(
+    ElectricKiwiAccountSensorEntityDescription(
         key=ATTR_NEXT_BILLING_DATE,
         name=f"{NAME} next billing date",
         icon="mdi:calendar",
@@ -85,7 +77,7 @@ SENSOR_TYPES: tuple[ElectricKiwiSensorEntityDescription, ...] = (
             account_balance.next_billing_date, "%Y-%m-%d"
         ),
     ),
-    ElectricKiwiSensorEntityDescription(
+    ElectricKiwiAccountSensorEntityDescription(
         key=ATTR_HOP_PERCENTAGE,
         name=f"{NAME} Hour of Power savings",
         icon="",
@@ -108,7 +100,7 @@ async def async_setup_entry(
 
     entities = [
         ElectricKiwiAccountEntity(account_coordinator, description)
-        for description in SENSOR_TYPES
+        for description in ACCOUNT_SENSOR_TYPES
     ]
     async_add_entities(entities)
 
@@ -116,12 +108,12 @@ async def async_setup_entry(
 class ElectricKiwiAccountEntity(CoordinatorEntity, SensorEntity):
     """Entity object for Electric Kiwi sensor."""
 
-    entity_description: ElectricKiwiSensorEntityDescription
+    entity_description: ElectricKiwiAccountSensorEntityDescription
 
     def __init__(
         self,
         account_coordinator: ElectricKiwiAccountDataCoordinator,
-        description: ElectricKiwiSensorEntityDescription,
+        description: ElectricKiwiAccountSensorEntityDescription,
     ) -> None:
         """Entity object for Electric Kiwi sensor."""
         super().__init__(account_coordinator)
@@ -159,41 +151,3 @@ class ElectricKiwiAccountEntity(CoordinatorEntity, SensorEntity):
         """Get the latest data from Electric Kiwi and updates the balances."""
         await super().async_update()
         _LOGGER.debug("Account data from sensor: %s", self._account_coordinator.data)
-
-
-class ElectricKiwiAccountDataCoordinator(DataUpdateCoordinator):
-    """ElectricKiwi Data object."""
-
-    def __init__(self, hass: HomeAssistant, ek_api: ElectricKiwiApi) -> None:
-        """Initialize ElectricKiwiAccountDataCoordinator."""
-        super().__init__(
-            hass,
-            _LOGGER,
-            # Name of the data. For logging purposes.
-            name="Electric Kiwi Account Data",
-            # Polling interval. Will only be polled if there are subscribers.
-            update_interval=ACCOUNT_SCAN_INTERVAL,
-        )
-        self._ek_api = ek_api
-        self.customer_number = ek_api.customer_number
-        self.connection_id = ek_api.connection_id
-
-    async def _async_update_data(self) -> AccountBalance:
-        """Fetch data from API endpoint.
-
-        This is the place to pre-process the data to lookup tables
-        so entities can quickly look up their data.
-        """
-        try:
-            # Note: asyncio.TimeoutError and aiohttp.ClientError are already
-            # handled by the data update coordinator.
-            async with async_timeout.timeout(60):
-                return await self._ek_api.get_account_balance()
-        except AuthException as auth_err:
-            # Raising ConfigEntryAuthFailed will cancel future updates
-            # and start a config flow with SOURCE_REAUTH (async_step_reauth)
-            raise ConfigEntryAuthFailed from auth_err
-        except ApiException as api_err:
-            raise UpdateFailed(
-                f"Error communicating with EK API: {api_err}"
-            ) from api_err
