@@ -3,11 +3,11 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 
-from electrickiwi_api.model import AccountBalance
 from electrickiwi_api import ElectricKiwiApi
+from electrickiwi_api.model import AccountBalance
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -23,8 +23,8 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
 from .const import (
-    ATTR_EK_HOP_START,
     ATTR_EK_HOP_END,
+    ATTR_EK_HOP_START,
     ATTR_HOP_PERCENTAGE,
     ATTR_NEXT_BILLING_DATE,
     ATTR_TOTAL_CURRENT_BALANCE,
@@ -106,7 +106,8 @@ HOP_SENSOR_TYPE: tuple[ElectricKiwiSensorEntityDescription, ...] = (
         name="Hour of free power end",
         device_class=SensorDeviceClass.TIMESTAMP,
         value_func=lambda hop: datetime.combine(
-            datetime.today(), datetime.strptime(hop.end.end_time, "%I:%M %p").time()
+            datetime.today(),
+            datetime.strptime(hop.end.end_time, "%I:%M %p").time(),
         ).astimezone(dt_util.DEFAULT_TIME_ZONE),
     ),
 )
@@ -245,9 +246,20 @@ class ElectricKiwiHOPEntity(CoordinatorEntity, SensorEntity):
     @property
     def native_value(self) -> datetime | str | None:
         """Return the state of the sensor."""
-        return self.entity_description.value_func(
+        value = self.entity_description.value_func(
             self._hop_coordinator.get_selected_hop()
         )
+
+        end_time = datetime.combine(
+            datetime.today(),
+            datetime.strptime(
+                self._hop_coordinator.get_selected_hop().end.end_time, "%I:%M %p"
+            ).time(),
+        ).astimezone(dt_util.DEFAULT_TIME_ZONE)
+
+        if end_time < datetime.now().astimezone(dt_util.DEFAULT_TIME_ZONE):
+            return value + timedelta(days=1)
+        return value
 
     @property
     def extra_state_attributes(self) -> dict[str, str]:
