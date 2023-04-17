@@ -4,6 +4,7 @@ Displays financial information from your Electric Kiwi account
 
 Sign in and enjoy
 
-## TODO:
+Provides a list of sensors from your account balance
+Selectable HOP as well as an entity to use for automations
 
-allow editing and automation of your hour of power
+Welcome to open issues or requests
