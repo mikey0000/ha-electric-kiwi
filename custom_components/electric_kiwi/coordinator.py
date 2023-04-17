@@ -31,8 +31,6 @@ class ElectricKiwiAccountDataCoordinator(DataUpdateCoordinator):
             update_interval=ACCOUNT_SCAN_INTERVAL,
         )
         self._ek_api = ek_api
-        self.customer_number = ek_api.customer_number
-        self.connection_id = ek_api.connection_id
 
     async def _async_update_data(self) -> AccountBalance:
         """Fetch data from API endpoint.
@@ -69,8 +67,6 @@ class ElectricKiwiHOPDataCoordinator(DataUpdateCoordinator):
             update_interval=HOP_SCAN_INTERVAL,
         )
         self._ek_api = ek_api
-        self.customer_number = ek_api.customer_number
-        self.connection_id = ek_api.connection_id
         self.hop_intervals: HopIntervals = None
 
     def get_hop_options(self) -> dict[str, int]:

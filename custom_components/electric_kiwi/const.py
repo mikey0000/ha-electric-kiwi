@@ -17,4 +17,5 @@ ATTR_NEXT_BILLING_DATE = "next_billing_date"
 ATTR_HOP_PERCENTAGE = "hop_percentage"
 
 ATTR_EK_HOP_SELECT = "hop_select"
-ATTR_EK_HOP = "hop_sensor"
+ATTR_EK_HOP_START = "hop_sensor_start"
+ATTR_EK_HOP_END = "hop_sensor_end"

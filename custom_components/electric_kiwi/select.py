@@ -5,6 +5,8 @@ from dataclasses import dataclass
 import logging
 from typing import Final
 
+from electrickiwi_api import ElectricKiwiApi
+
 from homeassistant.components.select import SelectEntity, SelectEntityDescription
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
@@ -36,7 +38,7 @@ HOP_SELECT_TYPE: Final[tuple[ElectricKiwiHOPDescription, ...]] = (
     ElectricKiwiHOPDescription(
         entity_category=EntityCategory.CONFIG,
         key=ATTR_EK_HOP_SELECT,
-        name="Electric Kiwi Hour of free power",
+        name="Hour of free power",
         options_dict=None,
     ),
 )
@@ -46,14 +48,16 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     """Electric Kiwi Sensor Setup."""
+    ek_api: ElectricKiwiApi = hass.data[DOMAIN][entry.entry_id]["ek_api"]
     hop_coordinator: ElectricKiwiHOPDataCoordinator = hass.data[DOMAIN][entry.entry_id][
         "hop_coordinator"
     ]
 
     _LOGGER.debug("Setting up HOP entity")
-
     entities = [
-        ElectricKiwiSelectHOPEntity(hop_coordinator, description)
+        ElectricKiwiSelectHOPEntity(
+            hop_coordinator, description, ek_api.customer_number, ek_api.connection_id
+        )
         for description in HOP_SELECT_TYPE
     ]
     async_add_entities(entities)
@@ -69,12 +73,16 @@ class ElectricKiwiSelectHOPEntity(CoordinatorEntity, SelectEntity):
         self,
         hop_coordinator: ElectricKiwiHOPDataCoordinator,
         description: ElectricKiwiHOPDescription,
+        customer_number: int,
+        connection_id: int,
     ) -> None:
         """Initialise the HOP selection entity."""
         super().__init__(hop_coordinator)
         self._hop_coordinator: ElectricKiwiHOPDataCoordinator = hop_coordinator
         self.entity_description = description
         self._state = None
+        self.customer_number = customer_number
+        self.connection_id = connection_id
         self.values_dict = self._hop_coordinator.get_hop_options()
         self._attr_options = list(self.values_dict.keys())
         self._async_update_attrs()
@@ -82,7 +90,13 @@ class ElectricKiwiSelectHOPEntity(CoordinatorEntity, SelectEntity):
     @property
     def unique_id(self) -> str:
         """Return a unique ID."""
-        return f"{self._hop_coordinator.customer_number}_{self._hop_coordinator.connection_id}_{self.entity_description.name}"
+        return "_".join(
+            [
+                str(self.customer_number),
+                str(self.connection_id),
+                self.entity_description.key,
+            ]
+        )
 
     @property
     def name(self) -> str:
