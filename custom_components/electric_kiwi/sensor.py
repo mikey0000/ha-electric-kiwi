@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 import logging
 
 from electrickiwi_api import ElectricKiwiApi
-from electrickiwi_api.model import AccountBalance
+from electrickiwi_api.model import AccountBalance, Hop
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -92,8 +92,24 @@ ACCOUNT_SENSOR_TYPES: tuple[ElectricKiwiSensorEntityDescription, ...] = (
     ),
 )
 
-HOP_SENSOR_TYPE: tuple[ElectricKiwiSensorEntityDescription, ...] = (
-    ElectricKiwiSensorEntityDescription(
+
+@dataclass
+class ElectricKiwiHOPRequiredKeysMixin:
+    """Mixin for required HOP keys."""
+
+    value_func: Callable[[Hop], datetime]
+
+
+@dataclass
+class ElectricKiwiHOPSensorEntityDescription(
+    SensorEntityDescription,
+    ElectricKiwiHOPRequiredKeysMixin,
+):
+    """Describes Electric Kiwi HOP sensor entity."""
+
+
+HOP_SENSOR_TYPE: tuple[ElectricKiwiHOPSensorEntityDescription, ...] = (
+    ElectricKiwiHOPSensorEntityDescription(
         key=ATTR_EK_HOP_START,
         name="Hour of free power start",
         device_class=SensorDeviceClass.TIMESTAMP,
@@ -101,7 +117,7 @@ HOP_SENSOR_TYPE: tuple[ElectricKiwiSensorEntityDescription, ...] = (
             datetime.today(), datetime.strptime(hop.start.start_time, "%I:%M %p").time()
         ).astimezone(dt_util.DEFAULT_TIME_ZONE),
     ),
-    ElectricKiwiSensorEntityDescription(
+    ElectricKiwiHOPSensorEntityDescription(
         key=ATTR_EK_HOP_END,
         name="Hour of free power end",
         device_class=SensorDeviceClass.TIMESTAMP,
@@ -206,12 +222,12 @@ class ElectricKiwiAccountEntity(CoordinatorEntity, SensorEntity):
 class ElectricKiwiHOPEntity(CoordinatorEntity, SensorEntity):
     """Entity object for Electric Kiwi sensor."""
 
-    entity_description: ElectricKiwiSensorEntityDescription
+    entity_description: ElectricKiwiHOPSensorEntityDescription
 
     def __init__(
         self,
         hop_coordinator: ElectricKiwiHOPDataCoordinator,
-        description: ElectricKiwiSensorEntityDescription,
+        description: ElectricKiwiHOPSensorEntityDescription,
         customer_number: int,
         connection_id: int,
     ) -> None:
@@ -246,7 +262,7 @@ class ElectricKiwiHOPEntity(CoordinatorEntity, SensorEntity):
     @property
     def native_value(self) -> datetime | str | None:
         """Return the state of the sensor."""
-        value = self.entity_description.value_func(
+        value: datetime = self.entity_description.value_func(
             self._hop_coordinator.get_selected_hop()
         )
 
