@@ -15,3 +15,6 @@ ATTR_TOTAL_RUNNING_BALANCE = "total_running_balance"
 ATTR_TOTAL_CURRENT_BALANCE = "total_account_balance"
 ATTR_NEXT_BILLING_DATE = "next_billing_date"
 ATTR_HOP_PERCENTAGE = "hop_percentage"
+
+ATTR_EK_HOP_SELECT = "hop_select"
+ATTR_EK_HOP = "hop_sensor"

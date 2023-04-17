@@ -8,4 +8,7 @@ Requires a valid Electric Kiwi account.
 
 Just install and add from the integrations location in Home Assistant.
 
+Provides a list of sensors from your account balance
+Selectable HOP as well as an entity to use for automations
+
 

@@ -5,8 +5,6 @@ from dataclasses import dataclass
 import logging
 from typing import Final
 
-from electrickiwi_api import ElectricKiwiApi
-
 from homeassistant.components.select import SelectEntity, SelectEntityDescription
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
@@ -14,7 +12,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN
+from .const import ATTR_EK_HOP_SELECT, DOMAIN
 from .coordinator import ElectricKiwiHOPDataCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -24,7 +22,7 @@ _LOGGER = logging.getLogger(__name__)
 class ElectricKiwiHOPSelectDescriptionMixin:
     """Define an entity description mixin for select entities."""
 
-    options_dict: dict[str, int]
+    options_dict: dict[str, int] | None
 
 
 @dataclass
@@ -37,7 +35,7 @@ class ElectricKiwiHOPDescription(
 HOP_SELECT_TYPE: Final[tuple[ElectricKiwiHOPDescription, ...]] = (
     ElectricKiwiHOPDescription(
         entity_category=EntityCategory.CONFIG,
-        key="EK_HOP",
+        key=ATTR_EK_HOP_SELECT,
         name="Electric Kiwi Hour of free power",
         options_dict=None,
     ),
@@ -48,30 +46,31 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     """Electric Kiwi Sensor Setup."""
-    ek_api: ElectricKiwiApi = hass.data[DOMAIN][entry.entry_id]
-    hop_coordinator = ElectricKiwiHOPDataCoordinator(hass, ek_api)
-    await hop_coordinator.async_config_entry_first_refresh()
+    hop_coordinator: ElectricKiwiHOPDataCoordinator = hass.data[DOMAIN][entry.entry_id][
+        "hop_coordinator"
+    ]
 
     _LOGGER.debug("Setting up HOP entity")
 
     entities = [
-        ElectricKiwiHOPEntity(hop_coordinator, description)
+        ElectricKiwiSelectHOPEntity(hop_coordinator, description)
         for description in HOP_SELECT_TYPE
     ]
     async_add_entities(entities)
 
 
-class ElectricKiwiHOPEntity(CoordinatorEntity, SelectEntity):
+class ElectricKiwiSelectHOPEntity(CoordinatorEntity, SelectEntity):
     """Entity object for seeing and setting the hour of free power."""
 
     entity_description: ElectricKiwiHOPDescription
-    values_dict: dict[int, str]
+    values_dict: dict[str, int]
 
     def __init__(
         self,
         hop_coordinator: ElectricKiwiHOPDataCoordinator,
         description: ElectricKiwiHOPDescription,
     ) -> None:
+        """Initialise the HOP selection entity."""
         super().__init__(hop_coordinator)
         self._hop_coordinator: ElectricKiwiHOPDataCoordinator = hop_coordinator
         self.entity_description = description
