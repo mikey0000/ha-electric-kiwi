@@ -1,5 +1,4 @@
 """Electric Kiwi coordinators."""
-import asyncio
 from datetime import timedelta
 import logging
 
@@ -74,20 +73,21 @@ class ElectricKiwiHOPDataCoordinator(DataUpdateCoordinator):
         self.connection_id = ek_api.connection_id
         self.hop_intervals: HopIntervals = None
 
-    def get_hop_options(self) -> dict[str]:
-        """get the hop interval options for selection."""
+    def get_hop_options(self) -> dict[str, int]:
+        """Get the hop interval options for selection."""
         return {
             f"{v.start_time} - {v.end_time}": k
             for k, v in self.hop_intervals.intervals.items()
         }
 
     def get_selected_hop(self) -> Hop:
-        """get currently selected hop."""
+        """Get currently selected hop."""
         return self.data
 
     async def async_update_hop(self, hop_interval: int) -> Hop:
-        """update selected hop and data."""
+        """Update selected hop and data."""
         self.data = await self._ek_api.post_hop(hop_interval)
+        self.async_update_listeners()
         return self.data
 
     async def _async_update_data(self) -> Hop:
@@ -100,7 +100,6 @@ class ElectricKiwiHOPDataCoordinator(DataUpdateCoordinator):
             # handled by the data update coordinator.
             async with async_timeout.timeout(60):
                 if self.hop_intervals is None:
-                    await asyncio.sleep(0.5)
                     hop_intervals: HopIntervals = await self._ek_api.get_hop_intervals()
                     hop_intervals.intervals = dict(
                         filter(
@@ -110,8 +109,6 @@ class ElectricKiwiHOPDataCoordinator(DataUpdateCoordinator):
                     )
 
                     self.hop_intervals = hop_intervals
-                    # prevent the 429 rate limiter from triggering
-                    await asyncio.sleep(0.5)
                 return await self._ek_api.get_hop()
         except AuthException as auth_err:
             # Raising ConfigEntryAuthFailed will cancel future updates

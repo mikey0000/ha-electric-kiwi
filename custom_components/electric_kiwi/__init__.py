@@ -13,6 +13,10 @@ from homeassistant.helpers import aiohttp_client, config_entry_oauth2_flow
 
 from . import api
 from .const import DOMAIN
+from .coordinator import (
+    ElectricKiwiAccountDataCoordinator,
+    ElectricKiwiHOPDataCoordinator,
+)
 
 PLATFORMS: list[Platform] = [
     Platform.SENSOR,
@@ -39,13 +43,24 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     except aiohttp.ClientError as err:
         raise ConfigEntryNotReady from err
 
-    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = ElectricKiwiApi(
+    ek_api = ElectricKiwiApi(
         api.AsyncConfigEntryAuth(aiohttp_client.async_get_clientsession(hass), session)
     )
+    account_coordinator = ElectricKiwiAccountDataCoordinator(hass, ek_api)
+    hop_coordinator = ElectricKiwiHOPDataCoordinator(hass, ek_api)
+
+    hass.data.setdefault(DOMAIN, {})
+    hass.data[DOMAIN][entry.entry_id] = {
+        "ek_api": ek_api,
+        "account_coordinator": account_coordinator,
+        "hop_coordinator": hop_coordinator,
+    }
 
     # we need to set the client number and connection id
     try:
-        await hass.data[DOMAIN][entry.entry_id].set_active_session()
+        await hass.data[DOMAIN][entry.entry_id]["ek_api"].set_active_session()
+        await hop_coordinator.async_config_entry_first_refresh()
+        await account_coordinator.async_config_entry_first_refresh()
     except AuthException as err:
         raise ConfigEntryAuthFailed(err) from err
 
