@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import aiohttp
 from electrickiwi_api import ElectricKiwiApi
-from electrickiwi_api.exceptions import AuthException
+from electrickiwi_api.exceptions import AuthException, ApiException
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
@@ -49,20 +49,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     account_coordinator = ElectricKiwiAccountDataCoordinator(hass, ek_api)
     hop_coordinator = ElectricKiwiHOPDataCoordinator(hass, ek_api)
 
-    hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = {
-        "ek_api": ek_api,
+    
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
         "account_coordinator": account_coordinator,
         "hop_coordinator": hop_coordinator,
     }
 
     # we need to set the client number and connection id
     try:
-        await hass.data[DOMAIN][entry.entry_id]["ek_api"].set_active_session()
+        await ek_api.set_active_session()
         await hop_coordinator.async_config_entry_first_refresh()
         await account_coordinator.async_config_entry_first_refresh()
-    except AuthException as err:
-        raise ConfigEntryAuthFailed(err) from err
+    except ApiException as err:
+        raise ConfigEntryNotReady from err
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 

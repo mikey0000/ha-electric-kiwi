@@ -1,4 +1,5 @@
 """Electric Kiwi coordinators."""
+from collections import OrderedDict
 from datetime import timedelta
 import logging
 
@@ -67,7 +68,7 @@ class ElectricKiwiHOPDataCoordinator(DataUpdateCoordinator):
             update_interval=HOP_SCAN_INTERVAL,
         )
         self._ek_api = ek_api
-        self.hop_intervals: HopIntervals = None
+        self.hop_intervals: HopIntervals = HopIntervals("", "", OrderedDict())
 
     def get_hop_options(self) -> dict[str, int]:
         """Get the hop interval options for selection."""
@@ -76,14 +77,17 @@ class ElectricKiwiHOPDataCoordinator(DataUpdateCoordinator):
             for k, v in self.hop_intervals.intervals.items()
         }
 
-    def get_selected_hop(self) -> Hop:
-        """Get currently selected hop."""
-        return self.data
-
     async def async_update_hop(self, hop_interval: int) -> Hop:
         """Update selected hop and data."""
-        self.data = await self._ek_api.post_hop(hop_interval)
-        self.async_update_listeners()
+        try:
+            self.async_set_updated_data(await self._ek_api.post_hop(hop_interval))
+        except AuthException as auth_err:
+            raise ConfigEntryAuthFailed from auth_err
+        except ApiException as api_err:
+            raise UpdateFailed(
+                f"Error communicating with EK API: {api_err}"
+            ) from api_err
+
         return self.data
 
     async def _async_update_data(self) -> Hop:
@@ -95,7 +99,7 @@ class ElectricKiwiHOPDataCoordinator(DataUpdateCoordinator):
             # Note: asyncio.TimeoutError and aiohttp.ClientError are already
             # handled by the data update coordinator.
             async with async_timeout.timeout(60):
-                if self.hop_intervals is None:
+                if len(self.hop_intervals.intervals) == 0:
                     hop_intervals: HopIntervals = await self._ek_api.get_hop_intervals()
                     hop_intervals.intervals = dict(
                         filter(

@@ -108,23 +108,42 @@ class ElectricKiwiHOPSensorEntityDescription(
     """Describes Electric Kiwi HOP sensor entity."""
 
 
+def check_and_move_time(time: datetime, hop: Hop):
+    """moves time forward by a day if HOP is in the past"""
+    end_time = datetime.combine(
+        datetime.today(),
+        datetime.strptime(hop.end.end_time, "%I:%M %p").time(),
+    ).astimezone(dt_util.DEFAULT_TIME_ZONE)
+
+    if end_time < datetime.now().astimezone(dt_util.DEFAULT_TIME_ZONE):
+        return time + timedelta(days=1)
+    return time
+
+
 HOP_SENSOR_TYPE: tuple[ElectricKiwiHOPSensorEntityDescription, ...] = (
     ElectricKiwiHOPSensorEntityDescription(
         key=ATTR_EK_HOP_START,
         name="Hour of free power start",
         device_class=SensorDeviceClass.TIMESTAMP,
-        value_func=lambda hop: datetime.combine(
-            datetime.today(), datetime.strptime(hop.start.start_time, "%I:%M %p").time()
-        ).astimezone(dt_util.DEFAULT_TIME_ZONE),
+        value_func=lambda hop: check_and_move_time(
+            datetime.combine(
+                datetime.today(),
+                datetime.strptime(hop.start.start_time, "%I:%M %p").time(),
+            ).astimezone(dt_util.DEFAULT_TIME_ZONE),
+            hop,
+        ),
     ),
     ElectricKiwiHOPSensorEntityDescription(
         key=ATTR_EK_HOP_END,
         name="Hour of free power end",
         device_class=SensorDeviceClass.TIMESTAMP,
-        value_func=lambda hop: datetime.combine(
-            datetime.today(),
-            datetime.strptime(hop.end.end_time, "%I:%M %p").time(),
-        ).astimezone(dt_util.DEFAULT_TIME_ZONE),
+        value_func=lambda hop: check_and_move_time(
+            datetime.combine(
+                datetime.today(),
+                datetime.strptime(hop.end.end_time, "%I:%M %p").time(),
+            ).astimezone(dt_util.DEFAULT_TIME_ZONE),
+            hop,
+        ),
     ),
 )
 
@@ -133,7 +152,6 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     """Electric Kiwi Sensor Setup."""
-    ek_api: ElectricKiwiApi = hass.data[DOMAIN][entry.entry_id]["ek_api"]
     account_coordinator: ElectricKiwiAccountDataCoordinator = hass.data[DOMAIN][
         entry.entry_id
     ]["account_coordinator"]
@@ -142,8 +160,6 @@ async def async_setup_entry(
         ElectricKiwiAccountEntity(
             account_coordinator,
             description,
-            ek_api.customer_number,
-            ek_api.connection_id,
         )
         for description in ACCOUNT_SENSOR_TYPES
     ]
@@ -155,142 +171,72 @@ async def async_setup_entry(
 
     hop_entities = [
         ElectricKiwiHOPEntity(
-            hop_coordinator, description, ek_api.customer_number, ek_api.connection_id
+            hop_coordinator,
+            description,
         )
         for description in HOP_SENSOR_TYPE
     ]
     async_add_entities(hop_entities)
 
 
-class ElectricKiwiAccountEntity(CoordinatorEntity, SensorEntity):
+class ElectricKiwiAccountEntity(
+    CoordinatorEntity[ElectricKiwiAccountDataCoordinator], SensorEntity
+):
     """Entity object for Electric Kiwi sensor."""
 
     entity_description: ElectricKiwiSensorEntityDescription
+    _attr_attribution = ATTRIBUTION
 
     def __init__(
         self,
         account_coordinator: ElectricKiwiAccountDataCoordinator,
         description: ElectricKiwiSensorEntityDescription,
-        customer_number: int,
-        connection_id: int,
     ) -> None:
         """Entity object for Electric Kiwi sensor."""
         super().__init__(account_coordinator)
-        self._account_coordinator: ElectricKiwiAccountDataCoordinator = (
-            account_coordinator
-        )
-        self.customer_number = customer_number
-        self.connection_id = connection_id
+
+        self.customer_number = self.coordinator._ek_api.customer_number
+        self.connection_id = self.coordinator._ek_api.connection_id
         self._balance: AccountBalance
         self.entity_description = description
-        self._attributes = {
-            ATTR_ATTRIBUTION: ATTRIBUTION,
-        }
 
     @property
     def unique_id(self) -> str:
         """Return a unique ID."""
-        return "_".join(
-            [
-                str(self.customer_number),
-                str(self.connection_id),
-                self.entity_description.key,
-            ]
-        )
-
-    @property
-    def name(self) -> str:
-        """Return the name of the sensor."""
-        return f"{self.entity_description.name}"
+        return f"{self.customer_number}_{str(self.connection_id)}_{self.entity_description.key}"
 
     @property
     def native_value(self) -> datetime | str | None:
         """Return the state of the sensor."""
         return self.entity_description.value_func(self._account_coordinator.data)
 
-    @property
-    def extra_state_attributes(self) -> dict[str, str]:
-        """Return the state attributes."""
-        return self._attributes
 
-    async def async_update(self) -> None:
-        """Get the latest data from Electric Kiwi and updates the balances."""
-        await super().async_update()
-        logging.debug("Account data from sensor: %s", self._account_coordinator.data)
-
-
-class ElectricKiwiHOPEntity(CoordinatorEntity, SensorEntity):
+class ElectricKiwiHOPEntity(
+    CoordinatorEntity[ElectricKiwiHOPDataCoordinator], SensorEntity
+):
     """Entity object for Electric Kiwi sensor."""
 
     entity_description: ElectricKiwiHOPSensorEntityDescription
+    _attr_attribution = ATTRIBUTION
 
     def __init__(
         self,
         hop_coordinator: ElectricKiwiHOPDataCoordinator,
         description: ElectricKiwiHOPSensorEntityDescription,
-        customer_number: int,
-        connection_id: int,
     ) -> None:
         """Entity object for Electric Kiwi sensor."""
         super().__init__(hop_coordinator)
-        self._hop_coordinator: ElectricKiwiHOPDataCoordinator = hop_coordinator
-        self.entity_description = description
 
-        self.customer_number = customer_number
-        self.connection_id = connection_id
+        self.customer_number = self.coordinator._ek_api.customer_number
+        self.connection_id = self.coordinator._ek_api.connection_id
         self.entity_description = description
-        self._attributes = {
-            ATTR_ATTRIBUTION: ATTRIBUTION,
-        }
 
     @property
     def unique_id(self) -> str:
         """Return a unique ID."""
-        return "_".join(
-            [
-                str(self.customer_number),
-                str(self.connection_id),
-                self.entity_description.key,
-            ]
-        )
+        return f"{self.customer_number}_{str(self.connection_id)}_{self.entity_description.key}"
 
     @property
-    def name(self) -> str:
-        """Return the name of the sensor."""
-        return f"{self.entity_description.name}"
-
-    @property
-    def native_value(self) -> datetime | str | None:
+    def native_value(self) -> datetime:
         """Return the state of the sensor."""
-        value: datetime = self.entity_description.value_func(
-            self._hop_coordinator.get_selected_hop()
-        )
-
-        end_time = datetime.combine(
-            datetime.today(),
-            datetime.strptime(
-                self._hop_coordinator.get_selected_hop().end.end_time, "%I:%M %p"
-            ).time(),
-        ).astimezone(dt_util.DEFAULT_TIME_ZONE)
-
-        if end_time < datetime.now().astimezone(dt_util.DEFAULT_TIME_ZONE):
-            return value + timedelta(days=1)
-        return value
-
-    @property
-    def extra_state_attributes(self) -> dict[str, str]:
-        """Return the state attributes."""
-        return self._attributes
-
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        """Update attributes when the coordinator updates."""
-        self._attr_native_value = self.entity_description.value_func(
-            self._hop_coordinator.get_selected_hop()
-        )
-        super()._handle_coordinator_update()
-
-    async def async_update(self) -> None:
-        """Get the latest data from Electric Kiwi and updates the HOP."""
-        await super().async_update()
-        logging.debug("HOP data from sensor: %s", self._hop_coordinator.data)
+        return self.entity_description.value_func(self.coordinator.data)
