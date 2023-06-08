@@ -1,5 +1,5 @@
 {
-  "domain": "electric_kiwi_custom",
+  "domain": "electric_kiwi",
   "name": "Electric Kiwi",
   "codeowners": ["@mikey0000"],
   "config_flow": true,
