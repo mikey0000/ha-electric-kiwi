@@ -48,7 +48,6 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     """Electric Kiwi Sensor Setup."""
-    ek_api: ElectricKiwiApi = hass.data[DOMAIN][entry.entry_id]["ek_api"]
     hop_coordinator: ElectricKiwiHOPDataCoordinator = hass.data[DOMAIN][entry.entry_id][
         "hop_coordinator"
     ]
@@ -56,7 +55,7 @@ async def async_setup_entry(
     _LOGGER.debug("Setting up HOP entity")
     entities = [
         ElectricKiwiSelectHOPEntity(
-            hop_coordinator, description, ek_api.customer_number, ek_api.connection_id
+            hop_coordinator, description
         )
         for description in HOP_SELECT_TYPE
     ]
@@ -82,7 +81,6 @@ class ElectricKiwiSelectHOPEntity(CoordinatorEntity[ElectricKiwiHOPDataCoordinat
         self.connection_id = self.coordinator._ek_api.connection_id
         self.values_dict = self.coordinator.get_hop_options()
         self._attr_options = list(self.values_dict.keys())
-        self._async_update_attrs()
 
     @property
     def unique_id(self) -> str:
@@ -92,7 +90,6 @@ class ElectricKiwiSelectHOPEntity(CoordinatorEntity[ElectricKiwiHOPDataCoordinat
     @callback
     def _handle_coordinator_update(self) -> None:
         """Update attributes when the coordinator updates."""
-        self._async_update_attrs()
         super()._handle_coordinator_update()
 
     @property

@@ -208,7 +208,7 @@ class ElectricKiwiAccountEntity(
     @property
     def native_value(self) -> datetime | str | None:
         """Return the state of the sensor."""
-        return self.entity_description.value_func(self._account_coordinator.data)
+        return self.entity_description.value_func(self.coordinator.data)
 
 
 class ElectricKiwiHOPEntity(
