@@ -21,7 +21,6 @@ class AsyncConfigEntryAuth(AbstractAuth):
         oauth_session: config_entry_oauth2_flow.OAuth2Session,
     ) -> None:
         """Initialize Electric Kiwi auth."""
-        # add host when ready for production "https://api.electrickiwi.co.nz" defaults to dev
         super().__init__(websession, API_BASE_URL)
         self._oauth_session = oauth_session
 
