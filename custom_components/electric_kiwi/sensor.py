@@ -108,16 +108,24 @@ class ElectricKiwiHOPSensorEntityDescription(
     """Describes Electric Kiwi HOP sensor entity."""
 
 
-def check_and_move_time(time: datetime, hop: Hop):
-    """moves time forward by a day if HOP is in the past"""
-    end_time = datetime.combine(
-        datetime.today(),
-        datetime.strptime(hop.end.end_time, "%I:%M %p").time(),
-    ).astimezone(dt_util.DEFAULT_TIME_ZONE)
+def _check_and_move_time(hop: Hop, time: str) -> datetime:
+    """Return the time a day forward if HOP end_time is in the past."""
+    date_time = datetime.combine(
+        dt_util.start_of_local_day(),
+        datetime.strptime(time, "%I:%M %p").time(),
+        dt_util.DEFAULT_TIME_ZONE,
+    )
 
-    if end_time < datetime.now().astimezone(dt_util.DEFAULT_TIME_ZONE):
-        return time + timedelta(days=1)
-    return time
+    end_time = datetime.combine(
+        dt_util.start_of_local_day(),
+        datetime.strptime(hop.end.end_time, "%I:%M %p").time(),
+        dt_util.DEFAULT_TIME_ZONE,
+    )
+
+    if end_time < dt_util.now():
+        return date_time + timedelta(days=1)
+    return date_time
+
 
 
 HOP_SENSOR_TYPE: tuple[ElectricKiwiHOPSensorEntityDescription, ...] = (
@@ -125,25 +133,13 @@ HOP_SENSOR_TYPE: tuple[ElectricKiwiHOPSensorEntityDescription, ...] = (
         key=ATTR_EK_HOP_START,
         name="Hour of free power start",
         device_class=SensorDeviceClass.TIMESTAMP,
-        value_func=lambda hop: check_and_move_time(
-            datetime.combine(
-                datetime.today(),
-                datetime.strptime(hop.start.start_time, "%I:%M %p").time(),
-            ).astimezone(dt_util.DEFAULT_TIME_ZONE),
-            hop,
-        ),
+        value_func=lambda hop: _check_and_move_time(hop, hop.start.start_time),
     ),
     ElectricKiwiHOPSensorEntityDescription(
         key=ATTR_EK_HOP_END,
         name="Hour of free power end",
         device_class=SensorDeviceClass.TIMESTAMP,
-        value_func=lambda hop: check_and_move_time(
-            datetime.combine(
-                datetime.today(),
-                datetime.strptime(hop.end.end_time, "%I:%M %p").time(),
-            ).astimezone(dt_util.DEFAULT_TIME_ZONE),
-            hop,
-        ),
+        value_func=lambda hop: _check_and_move_time(hop, hop.end.end_time),
     ),
 )
 
@@ -203,7 +199,8 @@ class ElectricKiwiAccountEntity(
     @property
     def unique_id(self) -> str:
         """Return a unique ID."""
-        return f"{self.customer_number}_{str(self.connection_id)}_{self.entity_description.key}"
+        return f"{self.customer_number}_{str(self.connection_id)}\
+            _{self.entity_description.key}"
 
     @property
     def native_value(self) -> datetime | str | None:
@@ -234,7 +231,8 @@ class ElectricKiwiHOPEntity(
     @property
     def unique_id(self) -> str:
         """Return a unique ID."""
-        return f"{self.customer_number}_{str(self.connection_id)}_{self.entity_description.key}"
+        return f"{self.customer_number}_{str(self.connection_id)}\
+            _{self.entity_description.key}"
 
     @property
     def native_value(self) -> datetime:

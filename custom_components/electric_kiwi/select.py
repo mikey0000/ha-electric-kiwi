@@ -34,7 +34,7 @@ class ElectricKiwiHOPDescription(
     """Class to describe an Electric Kiwi select entity."""
 
 
-HOP_SELECT_TYPE: Final[tuple[ElectricKiwiHOPDescription, ...]] = (
+HOP_SELECT_TYPE: Final[ElectricKiwiHOPDescription, ...] = (
     ElectricKiwiHOPDescription(
         entity_category=EntityCategory.CONFIG,
         key=ATTR_EK_HOP_SELECT,
@@ -85,7 +85,8 @@ class ElectricKiwiSelectHOPEntity(CoordinatorEntity[ElectricKiwiHOPDataCoordinat
     @property
     def unique_id(self) -> str:
         """Return a unique ID."""
-        return f"{self.customer_number}_{str(self.connection_id)}_{self.entity_description.key}"
+        return f"{self.customer_number}_{str(self.connection_id)}\
+            _{self.entity_description.key}"
 
     @callback
     def _handle_coordinator_update(self) -> None:
@@ -95,7 +96,8 @@ class ElectricKiwiSelectHOPEntity(CoordinatorEntity[ElectricKiwiHOPDataCoordinat
     @property
     def current_option(self) -> str | None:
         """Return the currently selected option."""
-        return f"{self.coordinator.data.start.start_time} - {self.coordinator.data.end.end_time}"
+        return f"{self.coordinator.data.start.start_time}\
+            - {self.coordinator.data.end.end_time}"
 
     async def async_select_option(self, option: str) -> None:
         """Change the selected option."""
