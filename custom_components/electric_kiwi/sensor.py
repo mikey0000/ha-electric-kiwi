@@ -185,22 +185,18 @@ class ElectricKiwiAccountEntity(
 
     def __init__(
         self,
-        account_coordinator: ElectricKiwiAccountDataCoordinator,
+        coordinator: ElectricKiwiAccountDataCoordinator,
         description: ElectricKiwiSensorEntityDescription,
     ) -> None:
         """Entity object for Electric Kiwi sensor."""
-        super().__init__(account_coordinator)
+        super().__init__(coordinator)
 
         self.customer_number = self.coordinator._ek_api.customer_number
         self.connection_id = self.coordinator._ek_api.connection_id
+        self._attr_unique_id = (f"{coordinator._ek_api.customer_number}"
+            f"_{coordinator._ek_api.connection_id}_{description.key}")
         self._balance: AccountBalance
         self.entity_description = description
-
-    @property
-    def unique_id(self) -> str:
-        """Return a unique ID."""
-        return f"{self.customer_number}_{str(self.connection_id)}\
-            _{self.entity_description.key}"
 
     @property
     def native_value(self) -> datetime | str | None:
@@ -218,21 +214,17 @@ class ElectricKiwiHOPEntity(
 
     def __init__(
         self,
-        hop_coordinator: ElectricKiwiHOPDataCoordinator,
+        coordinator: ElectricKiwiHOPDataCoordinator,
         description: ElectricKiwiHOPSensorEntityDescription,
     ) -> None:
         """Entity object for Electric Kiwi sensor."""
-        super().__init__(hop_coordinator)
+        super().__init__(coordinator)
 
         self.customer_number = self.coordinator._ek_api.customer_number
         self.connection_id = self.coordinator._ek_api.connection_id
+        self._attr_unique_id = (f"{coordinator._ek_api.customer_number}"
+            f"_{coordinator._ek_api.connection_id}_{description.key}")
         self.entity_description = description
-
-    @property
-    def unique_id(self) -> str:
-        """Return a unique ID."""
-        return f"{self.customer_number}_{str(self.connection_id)}\
-            _{self.entity_description.key}"
 
     @property
     def native_value(self) -> datetime:

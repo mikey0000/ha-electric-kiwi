@@ -79,8 +79,8 @@ class ElectricKiwiSelectHOPEntity(
     ) -> None:
         """Initialise the HOP selection entity."""
         super().__init__(coordinator)
-        self._attr_unique_id = f"{coordinator._ek_api.customer_number}\
-            _{coordinator._ek_api.connection_id}_{description.key}"
+        self._attr_unique_id = (f"{coordinator._ek_api.customer_number}"
+            f"_{coordinator._ek_api.connection_id}_{description.key}")
         self.entity_description = description
         self.values_dict = coordinator.get_hop_options()
         self._attr_options = list(self.values_dict)
