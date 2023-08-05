@@ -54,7 +54,7 @@ class ElectricKiwiAccountDataCoordinator(DataUpdateCoordinator):
             ) from api_err
 
 
-class ElectricKiwiHOPDataCoordinator(DataUpdateCoordinator):
+class ElectricKiwiHOPDataCoordinator(DataUpdateCoordinator[Hop]):
     """ElectricKiwi Data object."""
 
     def __init__(self, hass: HomeAssistant, ek_api: ElectricKiwiApi) -> None:
@@ -68,14 +68,16 @@ class ElectricKiwiHOPDataCoordinator(DataUpdateCoordinator):
             update_interval=HOP_SCAN_INTERVAL,
         )
         self._ek_api = ek_api
-        self.hop_intervals: HopIntervals = HopIntervals("", "", OrderedDict())
+        self.hop_intervals: HopIntervals | None = None
 
     def get_hop_options(self) -> dict[str, int]:
         """Get the hop interval options for selection."""
-        return {
-            f"{v.start_time} - {v.end_time}": k
-            for k, v in self.hop_intervals.intervals.items()
-        }
+        if self.hop_intervals is not None:
+            return {
+                f"{v.start_time} - {v.end_time}": k
+                for k, v in self.hop_intervals.intervals.items()
+            }
+        return {}
 
     async def async_update_hop(self, hop_interval: int) -> Hop:
         """Update selected hop and data."""
@@ -96,12 +98,10 @@ class ElectricKiwiHOPDataCoordinator(DataUpdateCoordinator):
         filters the intervals to remove ones that are not active
         """
         try:
-            # Note: asyncio.TimeoutError and aiohttp.ClientError are already
-            # handled by the data update coordinator.
             async with async_timeout.timeout(60):
-                if len(self.hop_intervals.intervals) == 0:
+                if self.hop_intervals is None:
                     hop_intervals: HopIntervals = await self._ek_api.get_hop_intervals()
-                    hop_intervals.intervals = dict(
+                    hop_intervals.intervals = OrderedDict(
                         filter(
                             lambda pair: pair[1].active == 1,
                             hop_intervals.intervals.items(),
@@ -111,8 +111,6 @@ class ElectricKiwiHOPDataCoordinator(DataUpdateCoordinator):
                     self.hop_intervals = hop_intervals
                 return await self._ek_api.get_hop()
         except AuthException as auth_err:
-            # Raising ConfigEntryAuthFailed will cancel future updates
-            # and start a config flow with SOURCE_REAUTH (async_step_reauth)
             raise ConfigEntryAuthFailed from auth_err
         except ApiException as api_err:
             raise UpdateFailed(
