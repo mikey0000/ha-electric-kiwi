@@ -1,13 +1,12 @@
-"""Support for Electric Kiwi account balance."""
+"""Support for Electric Kiwi sensors."""
+
 from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-import logging
 
-from electrickiwi_api import ElectricKiwiApi
-from electrickiwi_api.model import AccountBalance, Hop
+from electrickiwi_api.model import AccountSummary, Hop
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -15,97 +14,82 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import ATTR_ATTRIBUTION, CURRENCY_DOLLAR, PERCENTAGE
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.const import CURRENCY_DOLLAR, PERCENTAGE
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
-from .const import (
-    ATTR_EK_HOP_END,
-    ATTR_EK_HOP_START,
-    ATTR_HOP_PERCENTAGE,
-    ATTR_NEXT_BILLING_DATE,
-    ATTR_TOTAL_CURRENT_BALANCE,
-    ATTR_TOTAL_RUNNING_BALANCE,
-    ATTRIBUTION,
-    DOMAIN,
-)
+from .const import ATTRIBUTION
 from .coordinator import (
     ElectricKiwiAccountDataCoordinator,
+    ElectricKiwiConfigEntry,
     ElectricKiwiHOPDataCoordinator,
 )
 
+ATTR_EK_HOP_START = "hop_power_start"
+ATTR_EK_HOP_END = "hop_power_end"
+ATTR_TOTAL_RUNNING_BALANCE = "total_running_balance"
+ATTR_TOTAL_CURRENT_BALANCE = "total_account_balance"
+ATTR_NEXT_BILLING_DATE = "next_billing_date"
+ATTR_HOP_PERCENTAGE = "hop_percentage"
 
-@dataclass
-class ElectricKiwiRequiredKeysMixin:
-    """Mixin for required keys."""
 
-    value_func: Callable[[AccountBalance], str | datetime | None]
-
-
-@dataclass
-class ElectricKiwiSensorEntityDescription(
-    SensorEntityDescription, ElectricKiwiRequiredKeysMixin
-):
+@dataclass(frozen=True, kw_only=True)
+class ElectricKiwiAccountSensorEntityDescription(SensorEntityDescription):
     """Describes Electric Kiwi sensor entity."""
 
+    value_func: Callable[[AccountSummary], float | datetime]
 
-ACCOUNT_SENSOR_TYPES: tuple[ElectricKiwiSensorEntityDescription, ...] = (
-    ElectricKiwiSensorEntityDescription(
+
+def _get_hop_percentage(account_balance: AccountSummary) -> float:
+    """Return the hop percentage from account summary."""
+    if power := account_balance.services.get("power"):
+        if connection := power.connections[0]:
+            return float(connection.hop_percentage)
+    return 0.0
+
+
+ACCOUNT_SENSOR_TYPES: tuple[ElectricKiwiAccountSensorEntityDescription, ...] = (
+    ElectricKiwiAccountSensorEntityDescription(
         key=ATTR_TOTAL_RUNNING_BALANCE,
-        name="Total running balance",
-        icon="mdi:currency-usd",
+        translation_key="total_running_balance",
         device_class=SensorDeviceClass.MONETARY,
         state_class=SensorStateClass.TOTAL,
         native_unit_of_measurement=CURRENCY_DOLLAR,
-        value_func=lambda account_balance: str(account_balance.total_running_balance),
+        value_func=lambda account_balance: float(account_balance.total_running_balance),
     ),
-    ElectricKiwiSensorEntityDescription(
+    ElectricKiwiAccountSensorEntityDescription(
         key=ATTR_TOTAL_CURRENT_BALANCE,
-        name="Total current balance",
-        icon="mdi:currency-usd",
+        translation_key="total_current_balance",
         device_class=SensorDeviceClass.MONETARY,
         state_class=SensorStateClass.TOTAL,
         native_unit_of_measurement=CURRENCY_DOLLAR,
-        value_func=lambda account_balance: str(account_balance.total_account_balance),
+        value_func=lambda account_balance: float(account_balance.total_account_balance),
     ),
-    ElectricKiwiSensorEntityDescription(
+    ElectricKiwiAccountSensorEntityDescription(
         key=ATTR_NEXT_BILLING_DATE,
-        name="Next billing date",
-        icon="mdi:calendar",
+        translation_key="next_billing_date",
         device_class=SensorDeviceClass.DATE,
         value_func=lambda account_balance: datetime.strptime(
             account_balance.next_billing_date, "%Y-%m-%d"
         ),
     ),
-    ElectricKiwiSensorEntityDescription(
+    ElectricKiwiAccountSensorEntityDescription(
         key=ATTR_HOP_PERCENTAGE,
-        name="Hour of power savings",
-        icon="",
+        translation_key="hop_power_savings",
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
-        value_func=lambda account_balance: str(
-            account_balance.connections[0].hop_percentage
-        ),
+        value_func=_get_hop_percentage,
     ),
 )
 
 
-@dataclass
-class ElectricKiwiHOPRequiredKeysMixin:
-    """Mixin for required HOP keys."""
+@dataclass(frozen=True, kw_only=True)
+class ElectricKiwiHOPSensorEntityDescription(SensorEntityDescription):
+    """Describes Electric Kiwi HOP sensor entity."""
 
     value_func: Callable[[Hop], datetime]
-
-
-@dataclass
-class ElectricKiwiHOPSensorEntityDescription(
-    SensorEntityDescription,
-    ElectricKiwiHOPRequiredKeysMixin,
-):
-    """Describes Electric Kiwi HOP sensor entity."""
 
 
 def _check_and_move_time(hop: Hop, time: str) -> datetime:
@@ -113,13 +97,13 @@ def _check_and_move_time(hop: Hop, time: str) -> datetime:
     date_time = datetime.combine(
         dt_util.start_of_local_day(),
         datetime.strptime(time, "%I:%M %p").time(),
-        dt_util.DEFAULT_TIME_ZONE,
+        dt_util.get_default_time_zone(),
     )
 
     end_time = datetime.combine(
         dt_util.start_of_local_day(),
         datetime.strptime(hop.end.end_time, "%I:%M %p").time(),
-        dt_util.DEFAULT_TIME_ZONE,
+        dt_util.get_default_time_zone(),
     )
 
     if end_time < dt_util.now():
@@ -127,17 +111,16 @@ def _check_and_move_time(hop: Hop, time: str) -> datetime:
     return date_time
 
 
-
-HOP_SENSOR_TYPE: tuple[ElectricKiwiHOPSensorEntityDescription, ...] = (
+HOP_SENSOR_TYPES: tuple[ElectricKiwiHOPSensorEntityDescription, ...] = (
     ElectricKiwiHOPSensorEntityDescription(
         key=ATTR_EK_HOP_START,
-        name="Hour of free power start",
+        translation_key="hop_free_power_start",
         device_class=SensorDeviceClass.TIMESTAMP,
         value_func=lambda hop: _check_and_move_time(hop, hop.start.start_time),
     ),
     ElectricKiwiHOPSensorEntityDescription(
         key=ATTR_EK_HOP_END,
-        name="Hour of free power end",
+        translation_key="hop_free_power_end",
         device_class=SensorDeviceClass.TIMESTAMP,
         value_func=lambda hop: _check_and_move_time(hop, hop.end.end_time),
     ),
@@ -145,34 +128,29 @@ HOP_SENSOR_TYPE: tuple[ElectricKiwiHOPSensorEntityDescription, ...] = (
 
 
 async def async_setup_entry(
-    hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
+    hass: HomeAssistant,
+    entry: ElectricKiwiConfigEntry,
+    async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Electric Kiwi Sensor Setup."""
-    account_coordinator: ElectricKiwiAccountDataCoordinator = hass.data[DOMAIN][
-        entry.entry_id
-    ]["account_coordinator"]
+    """Electric Kiwi Sensors Setup."""
+    account_coordinator = entry.runtime_data.account
 
-    entities = [
+    entities: list[SensorEntity] = [
         ElectricKiwiAccountEntity(
             account_coordinator,
             description,
         )
         for description in ACCOUNT_SENSOR_TYPES
     ]
+
+    hop_coordinator = entry.runtime_data.hop
+    entities.extend(
+        [
+            ElectricKiwiHOPEntity(hop_coordinator, description)
+            for description in HOP_SENSOR_TYPES
+        ]
+    )
     async_add_entities(entities)
-
-    hop_coordinator: ElectricKiwiHOPDataCoordinator = hass.data[DOMAIN][entry.entry_id][
-        "hop_coordinator"
-    ]
-
-    hop_entities = [
-        ElectricKiwiHOPEntity(
-            hop_coordinator,
-            description,
-        )
-        for description in HOP_SENSOR_TYPE
-    ]
-    async_add_entities(hop_entities)
 
 
 class ElectricKiwiAccountEntity(
@@ -180,26 +158,26 @@ class ElectricKiwiAccountEntity(
 ):
     """Entity object for Electric Kiwi sensor."""
 
-    entity_description: ElectricKiwiSensorEntityDescription
+    entity_description: ElectricKiwiAccountSensorEntityDescription
+    _attr_has_entity_name = True
     _attr_attribution = ATTRIBUTION
 
     def __init__(
         self,
         coordinator: ElectricKiwiAccountDataCoordinator,
-        description: ElectricKiwiSensorEntityDescription,
+        description: ElectricKiwiAccountSensorEntityDescription,
     ) -> None:
         """Entity object for Electric Kiwi sensor."""
         super().__init__(coordinator)
 
-        self.customer_number = self.coordinator._ek_api.customer_number
-        self.connection_id = self.coordinator._ek_api.connection_id
-        self._attr_unique_id = (f"{coordinator._ek_api.customer_number}"
-            f"_{coordinator._ek_api.connection_id}_{description.key}")
-        self._balance: AccountBalance
+        self._attr_unique_id = (
+            f"{coordinator.ek_api.customer_number}"
+            f"_{coordinator.ek_api.electricity.identifier}_{description.key}"
+        )
         self.entity_description = description
 
     @property
-    def native_value(self) -> datetime | str | None:
+    def native_value(self) -> float | datetime:
         """Return the state of the sensor."""
         return self.entity_description.value_func(self.coordinator.data)
 
@@ -210,6 +188,7 @@ class ElectricKiwiHOPEntity(
     """Entity object for Electric Kiwi sensor."""
 
     entity_description: ElectricKiwiHOPSensorEntityDescription
+    _attr_has_entity_name = True
     _attr_attribution = ATTRIBUTION
 
     def __init__(
@@ -220,10 +199,10 @@ class ElectricKiwiHOPEntity(
         """Entity object for Electric Kiwi sensor."""
         super().__init__(coordinator)
 
-        self.customer_number = self.coordinator._ek_api.customer_number
-        self.connection_id = self.coordinator._ek_api.connection_id
-        self._attr_unique_id = (f"{coordinator._ek_api.customer_number}"
-            f"_{coordinator._ek_api.connection_id}_{description.key}")
+        self._attr_unique_id = (
+            f"{coordinator.ek_api.customer_number}"
+            f"_{coordinator.ek_api.electricity.identifier}_{description.key}"
+        )
         self.entity_description = description
 
     @property
