@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import aiohttp
 from electrickiwi_api import ElectricKiwiApi
-from electrickiwi_api.exceptions import ApiException
+from electrickiwi_api.exceptions import ApiException, AuthException
 
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
-from homeassistant.helpers import aiohttp_client, config_entry_oauth2_flow
+from homeassistant.helpers import (
+    aiohttp_client,
+    config_entry_oauth2_flow,
+    entity_registry as er,
+)
 
 from . import api
 from .coordinator import (
@@ -55,6 +59,8 @@ async def async_setup_entry(
         await ek_api.set_active_session()
         await hop_coordinator.async_config_entry_first_refresh()
         await account_coordinator.async_config_entry_first_refresh()
+    except AuthException as err:
+        raise ConfigEntryAuthFailed from err
     except ApiException as err:
         raise ConfigEntryNotReady from err
 
@@ -95,12 +101,30 @@ async def async_migrate_entry(
             )
         )
         try:
-            ek_session = await ek_api.get_active_session()
+            await ek_api.set_active_session()
+            connection_details = await ek_api.get_connection_details()
+        except AuthException:
+            config_entry.async_start_reauth(hass)
+            return False
         except ApiException:
             return False
-        unique_id = str(ek_session.data.customer_number)
+        unique_id = str(ek_api.customer_number)
+        identifier = ek_api.electricity.identifier
         hass.config_entries.async_update_entry(
             config_entry, unique_id=unique_id, minor_version=2
         )
+        entity_registry = er.async_get(hass)
+        entity_entries = er.async_entries_for_config_entry(
+            entity_registry, config_entry_id=config_entry.entry_id
+        )
+
+        for entity in entity_entries:
+            assert entity.config_entry_id
+            entity_registry.async_update_entity(
+                entity.entity_id,
+                new_unique_id=entity.unique_id.replace(
+                    f"{unique_id}_{connection_details.id}", f"{unique_id}_{identifier}"
+                ),
+            )
 
     return True
