@@ -15,5 +15,5 @@
   "requirements": [
     "electrickiwi-api==0.9.14"
   ],
-  "version": "0.9.4"
+  "version": "0.9.5"
 }
