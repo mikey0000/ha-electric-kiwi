@@ -9,6 +9,7 @@
     "application_credentials"
   ],
   "documentation": "https://github.com/mikey0000/ha-electric-kiwi",
+  "issue_tracker": "https://github.com/mikey0000/ha-electric-kiwi/issues",
   "integration_type": "hub",
   "iot_class": "cloud_polling",
   "requirements": [
